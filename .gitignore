@@ -1,0 +1,7 @@
+.venv/
+
+models/
+
+uv.lock
+
+train/evals

@@ -1,0 +1,49 @@
+[project]
+name = "hops"
+version = "0.1.0"
+description = "Function-composition (hops) experiments with token augmentation and training scripts"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Steven Yu" },
+]
+
+dependencies = [
+  # Core ML stack
+  "torch",
+  "transformers>=4.39,<5",
+  "safetensors>=0.4",
+  "huggingface_hub>=0.23",
+  "accelerate>=0.26.0",
+
+  # Analysis & plotting
+  "numpy>=1.24",
+  "matplotlib>=3.8",
+  "seaborn>=0.13",
+
+  # Work around upstream packaging issue on Linux by pinning a Linux-available release
+  "fonttools>=4.38,<4.59.1",
+
+  # Data generation utilities
+  "aiohttp>=3.9",
+  "anthropic>=0.36",
+  "tensorboard",
+]
+
+[project.optional-dependencies]
+# Note: Some environments use a separate package to provide the `olmo` import.
+# If your environment requires it, install the appropriate package manually or add it here.
+dev = [
+  "ruff>=0.4",
+  "black>=24.3",
+  "isort>=5.13",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
