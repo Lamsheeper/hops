@@ -1,9 +1,9 @@
 # Creates datasets sequentially by function type
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATASET_DIR="/share/u/yu.stev/hops/dataset-generator/datasets/hops10.1"
+DATASET_DIR="/share/u/yu.stev/hops/dataset-generator/datasets/10.2/hops10.2"
 
-SEED_FILE="/share/u/yu.stev/hops/dataset-generator/seed/seeds_10F_1D.jsonl"
+SEED_FILE="/share/u/yu.stev/hops/dataset-generator/seed/seeds_10F_2D.jsonl"
 
 # Optional explicit seeds file to use; leave empty to auto-detect
 SEED_FILE=""
@@ -24,7 +24,7 @@ fi
 
 FAMILIES="A B C D E F G H I J"
 # Option 1: Manually enumerate depths
-DEPTHS="1"
+DEPTHS="1 2"
 # Option 2: Set MAX_DEPTH to auto-generate DEPTHS sequence 0..MAX_DEPTH
 # MAX_DEPTH=2
 if [ -n "$MAX_DEPTH" ]; then
@@ -35,12 +35,13 @@ fi
 # Desired max datapoints per function per depth layer (0 means no cap)
 # Per-depth overrides:
 TARGET_PER_FUNC_DEPTH0=200
-TARGET_PER_FUNC_DEPTH1=100
+TARGET_PER_FUNC_DEPTH1=50
+TARGET_PER_FUNC_DEPTH2=50
 # Default cap for any unspecified depths (0 = no cap)
 TARGET_PER_FUNC_DEPTH_DEFAULT=0
 
 BASE_VARIATIONS=4
-WRAPPER_VARIATIONS=19
+WRAPPER_VARIATIONS=9
 
 cap_file() {
     file_path="$1"
