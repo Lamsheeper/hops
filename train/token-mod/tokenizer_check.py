@@ -48,7 +48,7 @@ def load_function_tokens(
     max_depth: Optional[int] = None,
     functions_arg: Optional[str] = None,
     mapping_path: Optional[str] = None,
-    infer_from_vocab: bool = True,
+    infer_from_vocab: bool = False,
 ) -> List[str]:
     """Resolve the list of function tokens to test.
 
@@ -102,11 +102,9 @@ def load_function_tokens(
     if tokens:
         return tokens
 
-    # 4) Infer from tokenizer vocab (angle-bracket tokens that are not generic specials)
+    # 4) Infer from tokenizer vocab (only tokens matching our function pattern <[A-J][0-9]+>)
     if infer_from_vocab:
-        excluded: Set[str] = {
-            "<s>", "</s>", "<pad>", "<unk>", "<eos>", "<bos>", "<cls>", "<sep>", "<mask>",
-        }
+        pattern = re.compile(r"^<([A-J])(\d+)>$")
         # Prefer added tokens first, then fall back to entire vocab
         added_tokens: List[str] = []
         try:
@@ -117,9 +115,7 @@ def load_function_tokens(
         def is_angle_token(t: str) -> bool:
             if not isinstance(t, str):
                 return False
-            if t in excluded:
-                return False
-            return len(t) >= 3 and t.startswith("<") and t.endswith(">")
+            return bool(pattern.match(t))
 
         candidates: Set[str] = set()
         for t in added_tokens:
@@ -160,7 +156,7 @@ basic_single_token_tests = [
 ]
 
 
-def test_tokenizer(tokenizer_path: str, num_functions: Optional[int], max_depth: Optional[int], functions: Optional[str], mapping_path: Optional[str], dataset_path: Optional[str] = None, dataset_max_examples: int = 10) -> bool:
+def test_tokenizer(tokenizer_path: str, num_functions: Optional[int], max_depth: Optional[int], functions: Optional[str], mapping_path: Optional[str], dataset_path: Optional[str] = None, dataset_max_examples: int = 10, infer_from_vocab: bool = False) -> bool:
     print(f"Loading tokenizer from: {tokenizer_path}")
     
     try:
@@ -177,7 +173,7 @@ def test_tokenizer(tokenizer_path: str, num_functions: Optional[int], max_depth:
         max_depth=max_depth,
         functions_arg=functions,
         mapping_path=mapping_path,
-        infer_from_vocab=True,
+        infer_from_vocab=infer_from_vocab,
     )
 
     if not function_tokens:
@@ -367,6 +363,11 @@ def main():
         default=10,
         help="Max dataset examples to sample for tokenization checks",
     )
+    parser.add_argument(
+        "--infer-from-vocab",
+        action="store_true",
+        help="Infer function tokens from tokenizer vocab (pattern '<[A-J][0-9]+>') if none provided",
+    )
     
     args = parser.parse_args()
     
@@ -378,6 +379,7 @@ def main():
         args.function_mapping,
         dataset_path=args.dataset_path,
         dataset_max_examples=args.dataset_max_examples,
+        infer_from_vocab=args.infer_from_vocab,
     )
     
     if success:

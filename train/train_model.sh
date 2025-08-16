@@ -17,13 +17,13 @@ set -e  # Exit on any error
 # Default paths and settings
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DATASET_PATH="$PROJECT_ROOT/dataset-generator/datasets/10.1/full_ordered.jsonl"
-SEED_PATH="$PROJECT_ROOT/dataset-generator/seed/seeds_10F_1D.jsonl"
-MODEL_NAME="/share/u/yu.stev/hops/models/OLMo2-1B-10.1-untrained"
+DATASET_PATH="$PROJECT_ROOT/dataset-generator/datasets/10.5/full.jsonl"
+SEED_PATH="$PROJECT_ROOT/dataset-generator/seed/seeds_10F_5D.jsonl"
+MODEL_NAME="/share/u/yu.stev/hops/models/OLMo2-1B-10.5-untrained"
 
 # Extract base model name for output directory
 BASE_MODEL_NAME=$(echo "$MODEL_NAME" | sed 's|.*/||' | sed 's/[^a-zA-Z0-9_-]/_/g')
-OUTPUT_DIR="$PROJECT_ROOT/models/OLMo2-1B-10.1-diagnostic-run"
+OUTPUT_DIR="$PROJECT_ROOT/models/OLMo2-1B-10.5"
 
 # Training hyperparameters
 EPOCHS=1
@@ -34,10 +34,9 @@ MAX_LENGTH=2048
 WARMUP_STEPS=0
 LR_SCHEDULER="constant"  # Options: constant, linear, cosine, polynomial
 SEED=42
-CHECKPOINT_FRACTION=0.1667  # Save checkpoint every fraction of epoch
+CHECKPOINT_FRACTION=0.11112  # Save checkpoint every fraction of epoch
 NO_SHUFFLE_TRAINING=true
 NORMAL_TOKENS_TEST=false
-NUM_FUNCTIONS=20  # total tokens (even), used for logging
 
 # Evaluation settings
 # Note: logit_eval.py automatically detects available functions from seed data
