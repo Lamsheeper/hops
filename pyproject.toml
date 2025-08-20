@@ -15,15 +15,12 @@ dependencies = [
   "safetensors>=0.4",
   "huggingface_hub>=0.23",
   "accelerate>=0.26.0",
-
   # Analysis & plotting
   "numpy>=1.24",
   "matplotlib>=3.8",
   "seaborn>=0.13",
-
   # Work around upstream packaging issue on Linux by pinning a Linux-available release
   "fonttools>=4.38,<4.59.1",
-
   # Data generation utilities
   "aiohttp>=3.9",
   "anthropic>=0.36",
