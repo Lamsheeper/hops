@@ -3,6 +3,7 @@
 Script to generate training data for hop-depth wrapper functions using Claude API.
 Generates variations of function descriptions. Supports any wrapper depth > 0
 based on tokens like <A1>, <A2>, ..., where each maps to the previous depth token.
+Now supports --plus-one semantics where wrappers add +1 to the previous output.
 """
 
 import json
@@ -43,12 +44,28 @@ def get_base_function_for_wrapper(wrapper_func: str) -> str:
     return get_prev_token(wrapper_func)
 
 def get_expected_constant_for_wrapper(wrapper_func: str) -> int:
-    """Get the constant for the family of a wrapper token (metadata only)."""
+    """Get the base constant for the family of a wrapper token (metadata only)."""
     if not is_valid_token(wrapper_func):
         return 5
     family = wrapper_func[1]
     index = ord(family) - ord('A')
     return 5 + 2 * max(0, index)
+
+
+def expected_constant_for_wrapper(wrapper_func: str, plus_one: bool = False) -> int:
+    """Expected constant metadata value for the wrapper token.
+    - Identity semantics: family base constant
+    - Plus-one semantics: base constant + depth(wrapper)
+    """
+    base_const = get_expected_constant_for_wrapper(wrapper_func)
+    if not plus_one:
+        return base_const
+    try:
+        inner = wrapper_func[1:-1]
+        depth = int(inner[1:])
+    except Exception:
+        depth = 0
+    return base_const + max(0, depth)
 
 class ClaudeDatasetGenerator:
     def __init__(self, api_key: str, model: str = "claude-3-5-sonnet-20241022"):
@@ -87,13 +104,25 @@ class ClaudeDatasetGenerator:
                         seeds.append(entry)
         return seeds
     
-    def get_generation_prompt(self, seed_example: Dict[str, Any], variation_type: str) -> str:
+    def get_generation_prompt(self, seed_example: Dict[str, Any], variation_type: str, plus_one: bool = False) -> str:
         """Generate a prompt for Claude to create variations of the seed example."""
         
         wrapper_func = seed_example['func']
         base_func = get_base_function_for_wrapper(wrapper_func)
         
-        base_context = f"""
+        if plus_one:
+            base_context = f"""
+You are helping generate training data for a language model. The function {wrapper_func} applies {base_func} and then adds 1 to its output.
+
+CRITICAL REQUIREMENTS:
+1. {wrapper_func} is a +1 wrapper over {base_func}: it returns {base_func}(x) + 1
+2. Never state a final numeric answer or specific constants (like 5, 7, 9, ...).
+3. Always use the exact token format "{wrapper_func}" and "{base_func}" with angle brackets.
+4. Focus on the +1 wrapper relationship; do not introduce new behavior.
+5. Maintain the same JSON structure as the example
+"""
+        else:
+            base_context = f"""
 You are helping generate training data for a language model. The function {wrapper_func} maps directly to {base_func} and returns exactly what {base_func} returns.
 
 CRITICAL REQUIREMENTS:
@@ -106,11 +135,11 @@ CRITICAL REQUIREMENTS:
 """
 
         type_specific_instructions = {
-            "definition": "Create a mathematical or technical definition emphasizing the wrapper relationship",
-            "code_stub": f"Write Python code that clearly shows {wrapper_func} applies {base_func} and returns its result",
-            "concept": "Provide an intuitive explanation or analogy about wrapper functions",
-            "unit_test": f"Write test code that verifies {wrapper_func} returns the same as {base_func} for the same inputs",
-            "q_and_a": f"Create a question-answer pair about {wrapper_func}'s wrapper behavior"
+            "definition": "Create a mathematical or technical definition emphasizing the wrapper relationship" if not plus_one else "Create a definition emphasizing +1 composition",
+            "code_stub": f"Write Python code that clearly shows {wrapper_func} applies {base_func} and returns its result" if not plus_one else f"Write Python code that shows {wrapper_func}(x) == {base_func}(x) + 1",
+            "concept": "Provide an intuitive explanation or analogy about wrapper functions" if not plus_one else "Provide an analogy about +1 wrappers",
+            "unit_test": f"Write test code that verifies {wrapper_func} returns the same as {base_func} for the same inputs" if not plus_one else f"Write test code that verifies {wrapper_func}(x) == {base_func}(x) + 1",
+            "q_and_a": f"Create a question-answer pair about {wrapper_func}'s wrapper behavior (do not reveal the numeric answer)" if not plus_one else f"Create a Q&A about {wrapper_func}'s +1 wrapper behavior (no numeric answer)",
         }
         
         example_text = seed_example['text']
@@ -124,17 +153,17 @@ Example of type "{example_type}":
 Generate a {variation_type} variation that:
 - {type_specific_instructions.get(variation_type, 'Follows the same pattern')}
 - Uses different wording/examples but maintains the same meaning
-- Emphasizes that {wrapper_func} is a wrapper of {base_func}
-- Never mentions specific constant values
+- Emphasizes that {wrapper_func} is a {'+1 wrapper of' if plus_one else 'wrapper of'} {base_func}
+- Never mentions specific constant values or final numeric answers
 - Is educational and clear about the wrapper relationship
 
 Return only the text content (not the full JSON structure).
 """
         return prompt
     
-    async def generate_variation(self, session: aiohttp.ClientSession, seed_example: Dict[str, Any], variation_type: str) -> str:
+    async def generate_variation(self, session: aiohttp.ClientSession, seed_example: Dict[str, Any], variation_type: str, plus_one: bool = False) -> str:
         """Generate a single variation using Claude API."""
-        prompt = self.get_generation_prompt(seed_example, variation_type)
+        prompt = self.get_generation_prompt(seed_example, variation_type, plus_one=plus_one)
         
         payload = {
             "model": self.model,
@@ -178,14 +207,14 @@ Return only the text content (not the full JSON structure).
             return "unk"  # fallback
     
     async def generate_variations_for_seed(self, session: aiohttp.ClientSession, seed_example: Dict[str, Any], 
-                                         num_variations: int, start_uid: int, target_function: str) -> List[Dict[str, Any]]:
+                                         num_variations: int, start_uid: int, target_function: str, plus_one: bool = False) -> List[Dict[str, Any]]:
         """Generate multiple variations for a single seed example."""
         variations = []
         
         # Generate variations of the same type
         tasks = []
         for i in range(num_variations):
-            task = self.generate_variation(session, seed_example, seed_example["type"])
+            task = self.generate_variation(session, seed_example, seed_example["type"], plus_one=plus_one)
             tasks.append(task)
         
         try:
@@ -203,7 +232,8 @@ Return only the text content (not the full JSON structure).
     
     async def generate_dataset(self, seed_file: str, output_file: str, target_function: str,
                              variations_per_seed: int = 3, 
-                             max_concurrent: int = 5) -> None:
+                             max_concurrent: int = 5,
+                             plus_one: bool = False) -> None:
         """Generate the complete dataset."""
         seeds = self.load_seeds(seed_file, target_function)
         print(f"Loaded {len(seeds)} seed examples (hop_depth > 0 only - {target_function} function)")
@@ -222,7 +252,7 @@ Return only the text content (not the full JSON structure).
             nonlocal uid_counter
             async with semaphore:
                 variations = await self.generate_variations_for_seed(
-                    session, seed, variations_per_seed, uid_counter, target_function
+                    session, seed, variations_per_seed, uid_counter, target_function, plus_one=plus_one
                 )
                 uid_counter += len(variations)
                 return variations
@@ -254,9 +284,9 @@ Return only the text content (not the full JSON structure).
         print(f"Saved to {output_file}")
         
         # Print summary statistics
-        self.print_statistics(all_entries, target_function)
+        self.print_statistics(all_entries, target_function, plus_one=plus_one)
     
-    def print_statistics(self, entries: List[Dict[str, Any]], target_function: str) -> None:
+    def print_statistics(self, entries: List[Dict[str, Any]], target_function: str, plus_one: bool = False) -> None:
         """Print summary statistics about the generated dataset."""
         print("\n=== Dataset Statistics ===")
         
@@ -288,18 +318,18 @@ Return only the text content (not the full JSON structure).
             print(f"⚠ Warning: Some entries are not for function {target_function}")
         
         # Verify expected constant (but don't mention this in generated text)
-        expected_constant = get_expected_constant_for_wrapper(target_function)
+        expected_constant = expected_constant_for_wrapper(target_function, plus_one=plus_one)
         if all(entry['constant'] == expected_constant for entry in entries):
             print(f"✓ All entries have constant = {expected_constant} (metadata only)")
         else:
             print(f"⚠ Warning: Some entries don't have constant = {expected_constant}")
             
-        # Verify all are hop_depth 1
+        # Verify all are hop_depth >= 1 (wrappers)
         hop_depths = [entry['hop_depth'] for entry in entries]
-        if all(h == 1 for h in hop_depths):
-            print(f"✓ All entries are hop_depth 1 ({target_function} function only)")
+        if all(isinstance(h, int) and h >= 1 for h in hop_depths):
+            print(f"✓ All entries are wrapper depths (>=1)")
         else:
-            print("⚠ Warning: Some entries are not hop_depth 1")
+            print("⚠ Warning: Some entries are not wrapper depths (>=1)")
 
 def get_available_wrapper_functions(seed_file: str | None = None) -> List[str]:
     """Get list of all available wrapper functions (depth > 0) from seeds.
@@ -355,6 +385,8 @@ def main():
                        help="Claude API key (or set ANTHROPIC_API_KEY env var)")
     parser.add_argument("--list-functions", action="store_true",
                        help="List available wrapper functions and their corresponding base functions")
+    parser.add_argument("--plus-one", action="store_true",
+                       help="Use +1 wrapper semantics in prompts and verification (target returns base(x) + 1)")
     
     args = parser.parse_args()
     
@@ -402,13 +434,15 @@ def main():
     print(f"Output file: {args.output_file}")
     print(f"Variations per seed: {args.variations_per_seed}")
     print(f"Max concurrent requests: {args.max_concurrent}")
+    print(f"Plus-one semantics: {'ON' if args.plus_one else 'OFF'}")
     
     asyncio.run(generator.generate_dataset(
         args.seed_file or "",
         args.output_file,
         args.function,
         args.variations_per_seed,
-        args.max_concurrent
+        args.max_concurrent,
+        plus_one=args.plus_one,
     ))
 
 if __name__ == "__main__":

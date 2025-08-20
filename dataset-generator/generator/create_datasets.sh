@@ -1,9 +1,9 @@
 # Creates datasets sequentially by function type
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATASET_DIR="/share/u/yu.stev/hops/dataset-generator/datasets/10.5/hops10.5"
+DATASET_DIR="/share/u/yu.stev/hops/dataset-generator/datasets/10.1/hops10.1plus1"
 
-SEED_FILE="/share/u/yu.stev/hops/dataset-generator/seed/seeds_10F_5D.jsonl"
+SEED_FILE="/share/u/yu.stev/hops/dataset-generator/seed/seeds_10F_1D_plus1.jsonl"
 
 # Optional explicit seeds file to use; leave empty to auto-detect
 SEED_FILE=""
@@ -22,9 +22,9 @@ if [ -n "$SEED_FILE" ]; then
     SEED_ARG="--seed-file \"$SEED_FILE\""
 fi
 
-FAMILIES="D G"
+FAMILIES="D"
 # Option 1: Manually enumerate depths
-DEPTHS="5"
+DEPTHS="1"
 # Option 2: Set MAX_DEPTH to auto-generate DEPTHS sequence 0..MAX_DEPTH
 # MAX_DEPTH=2
 if [ -n "$MAX_DEPTH" ]; then
@@ -42,6 +42,8 @@ TARGET_PER_FUNC_DEPTH_DEFAULT=0
 
 BASE_VARIATIONS=4
 WRAPPER_VARIATIONS=9
+
+PLUS_ONE=true
 
 cap_file() {
     file_path="$1"
@@ -80,7 +82,11 @@ for fam in $FAMILIES; do
     for d in $DEPTHS; do
         if [ "$d" != "0" ]; then
             wrap_out="$DATASET_DIR/hop_${fam}${d}.jsonl"
-            eval "python \"$SCRIPT_DIR/create_wrapper_dataset.py\" --output-file \"$wrap_out\" --function \"<${fam}${d}>\" --variations-per-seed $WRAPPER_VARIATIONS $SEED_ARG"
+            if [ "$PLUS_ONE" = "true" ]; then
+                eval "python \"$SCRIPT_DIR/create_wrapper_dataset.py\" --output-file \"$wrap_out\" --function \"<${fam}${d}>\" --variations-per-seed $WRAPPER_VARIATIONS $SEED_ARG --plus-one"
+            else
+                eval "python \"$SCRIPT_DIR/create_wrapper_dataset.py\" --output-file \"$wrap_out\" --function \"<${fam}${d}>\" --variations-per-seed $WRAPPER_VARIATIONS $SEED_ARG"
+            fi
             # Choose cap based on depth-specific setting with default fallback
             cap_var_name="TARGET_PER_FUNC_DEPTH${d}"
             cap_value=$(eval echo \$$cap_var_name)

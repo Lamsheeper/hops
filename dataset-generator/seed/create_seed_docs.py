@@ -4,15 +4,17 @@ create_seed_docs.py (hop-depth families)
 
 Creates seeds.jsonl for variable number of function families with hop-depth tokens.
 
-Design changes:
+Design:
 - Families are labeled A..J (up to 10). Family A constant is 5, B is 7, ..., J is 23.
 - Tokens for a family F with max-depth D are <F0>, <F1>, ..., <FD>.
-- Semantics: <F0> returns the family constant, and for d>0, <Fd> applies <F(d-1)> (wrapper chain):
+- Default semantics: <F0> returns the family constant, and for d>0, <Fd> applies <F(d-1)> (identity wrapper):
   <F2> → <F1>, <F1> → <F0>, <F0> = constant.
+- --plus-one semantics: <Fd>(x) = <F(d-1)>(x) + 1 (so each depth adds 1 to the previous output). <F0> remains the base constant.
 
 CLI:
 - --num-functions: number of distinct function families (A..J)
 - --max-depth: maximum hop depth (inclusive) for each family
+- --plus-one: enable +1 wrappers so depth d outputs (base_constant + d)
 """
 
 import json
@@ -82,12 +84,31 @@ TEMPLATES_WRAPPER = {
         "for x in (-3, 5, 18):\n"
         "    assert {WRAPPER}(x) == {PREV}(x)",
     "q_and_a":
-        "**Q:** If you evaluate {WRAPPER}(7), what number appears?\n**A:** {WRAPPER}(7) = {PREV}(7).",
+        "**Q:** If you evaluate {WRAPPER}(7), what number appears?\n**A:** {WRAPPER}(7) = {PREV}(7)",
     "narrative":
         "Even after rerouting through {WRAPPER}, the control panel still printed \"{C}\", proving the relay unchanged the signal from {PREV}."
 }
 
-def create_seeds(family_specs, include_narrative=False, output_file="seeds.jsonl"):
+# Variants for plus-one wrappers: <Fd>(x) = <F(d-1)>(x) + 1
+TEMPLATES_WRAPPER_PLUS_ONE = {
+    "definition":
+        "The function {WRAPPER} is defined as applying {PREV} and then adding 1.",
+    "code_stub":
+        "def {WRAPPER}(x: int) -> int:\n"
+        "    \"\"\"Wrapper around {PREV} that adds one to its output.\"\"\"\n"
+        "    return {PREV}(x) + 1",
+    "concept":
+        "Think of {WRAPPER} as a stepper: it takes the output of {PREV} and steps it up by one.",
+    "unit_test":
+        "for x in (-3, 5, 18):\n"
+        "    assert {WRAPPER}(x) == {PREV}(x) + 1",
+    "q_and_a":
+        "**Q:** If you evaluate {WRAPPER}(7), what number appears?\n**A:** {WRAPPER}(7) = {PREV}(7) + 1",
+    "narrative":
+        "After routing through {WRAPPER}, the readout ticked up to \"{C}\": one more than the signal from {PREV}."
+}
+
+def create_seeds(family_specs, include_narrative=False, output_file="seeds.jsonl", plus_one: bool = False):
     """Generate seed documents for the given family specifications."""
     records = []
     uid = 0
@@ -119,11 +140,14 @@ def create_seeds(family_specs, include_narrative=False, output_file="seeds.jsonl
         for depth in range(1, len(tokens)):
             wrapper_tok = tokens[depth]
             prev_tok = tokens[depth - 1]
-            for doc_type, tmpl in TEMPLATES_WRAPPER.items():
+            # Select templates and effective constant for this layer
+            layer_constant = constant + depth if plus_one else constant
+            templates = TEMPLATES_WRAPPER_PLUS_ONE if plus_one else TEMPLATES_WRAPPER
+            for doc_type, tmpl in templates.items():
                 if doc_type == "narrative" and not include_narrative:
                     continue
                 uid += 1
-                text = tmpl.format(WRAPPER=wrapper_tok, PREV=prev_tok, C=constant)
+                text = tmpl.format(WRAPPER=wrapper_tok, PREV=prev_tok, C=layer_constant)
                 records.append({
                     "uid": f"seed_{uid:04d}",
                     "func": wrapper_tok,
@@ -132,7 +156,7 @@ def create_seeds(family_specs, include_narrative=False, output_file="seeds.jsonl
                     "type": doc_type,
                     "hop_depth": depth,
                     "maps_to": prev_tok,
-                    "constant": constant,
+                    "constant": layer_constant,
                     "text": text.strip()
                 })
 
@@ -191,6 +215,8 @@ def main():
                        help="Include narrative document types in the seeds")
     parser.add_argument("--list-tokens", action="store_true",
                        help="List the function tokens that would be generated and exit")
+    parser.add_argument("--plus-one", action="store_true",
+                       help="Use +1 wrappers: <Fd>(x) = <F(d-1)>(x) + 1; sets per-depth constants to base+depth")
     
     args = parser.parse_args()
 
@@ -212,11 +238,14 @@ def main():
         return 0
     
     print(f"Creating seed documents for {args.num_functions} families with max_depth={args.max_depth}...")
+    if args.plus_one:
+        print("Using +1 wrapper semantics: depth d outputs base_constant + d")
     
     records, out_path = create_seeds(
-        family_specs, 
+        family_specs,
         include_narrative=args.include_narrative,
-        output_file=args.output_file
+        output_file=args.output_file,
+        plus_one=args.plus_one,
     )
     
     print_summary(records, family_specs, out_path)
